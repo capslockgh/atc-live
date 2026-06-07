@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空中電波即時切換器</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background-color: #1a1a1a; color: #fff; padding: 20px; }
+        .btn-group { margin-bottom: 25px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        .btn {
+            background-color: #333;
+            color: white;
+            border: 2px solid #444;
+            padding: 12px 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: 0.3s;
+            font-size: 14px;
+        }
+        .btn:hover { background-color: #ff0000; border-color: #ff0000; }
+        .btn.active { background-color: #ff0000; border-color: #fff; }
+        .video-box {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding-bottom: 56.25%;
+            height: 0;
+            background-color: #000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .video-box iframe {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>臺灣 ATC 航管通訊即時直播</h2>
+
+    <div class="btn-group">
+        <button class="btn active" onclick="loadAirportLive('RCTP', this)">桃園國際機場 (RCTP)</button>
+        <button class="btn" onclick="loadAirportLive('RCKH', this)">高雄國際機場 (RCKH)</button>
+        <button class="btn" onclick="loadAirportLive('RCSS', this)">台北松山機場 (RCSS)</button>
+        <button class="btn" onclick="loadAirportLive('RCBS', this)">金門 & 廈門機場</button>
+        <button class="btn" onclick="loadAirportLive('VHHH', this)">香港國際機場 (VHHH)</button>
+    </div>
+
+    <div class="video-box">
+        <iframe id="yt-player" 
+                src="" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowfullscreen>
+        </iframe>
+    </div>
+
+    <script>
+        // 核心機場關鍵字配置與自動保底 ID
+        const airportConfigs = {
+            'RCTP': { keywords: ['桃園', 'TAOYUAN', 'RCTP'], fallback: 'NOZVUBsCDEI' },
+            'RCKH': { keywords: ['高雄', 'KAOHSIUNG', 'RCKH'], fallback: 'pLPondkFYVg' },
+            'RCSS': { keywords: ['松山', 'SONGSHAN', 'RCSS'], fallback: 'vXvblXi-PGo' },
+            'RCBS': { keywords: ['金門', 'KINMEN', 'RCBS', '廈門'], fallback: '4GgWgoGAVuM' },
+            'VHHH': { keywords: ['香港', 'HONG KONG', 'VHHH'], fallback: 'ygC5wni2DMQ' }
+        };
+
+        async function loadAirportLive(airportKey, element) {
+            if (element) {
+                const buttons = document.querySelectorAll('.btn');
+                buttons.forEach(btn => btn.classList.remove('active'));
+                element.classList.add('active');
+            }
+
+            const player = document.getElementById('yt-player');
+            const config = airportConfigs[airportKey];
+            
+            const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=UC_O_S-v8mUvJpW-06A6X4pA`;
+            const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&_=${new Date().getTime()}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                
+                if (data.status === 'ok' && data.items.length > 0) {
+                    let foundId = null;
+
+                    for (let item of data.items) {
+                        const title = item.title.toUpperCase();
+                        const isMatchAirport = config.keywords.some(kw => title.includes(kw));
+                        const isLiveATC = title.includes('LIVE') && (title.includes('塔台') || title.includes('即時'));
+                        
+                        if (isMatchAirport && isLiveATC) {
+                            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                            const matchId = item.link.match(regExp);
+                            if (matchId && matchId[2].length === 11) {
+                                foundId = matchId[2];
+                                break; 
+                            }
+                        }
+                    }
+
+                    if (foundId) {
+                        player.src = `https://www.youtube.com/embed/${foundId}?autoplay=1`;
+                        return;
+                    }
+                }
+                throw new Error("沒抓到符合的直播");
+            } catch (error) {
+                console.warn(`[${airportKey}] 啟用防護保底:`, error);
+                player.src = `https://www.youtube.com/embed/${config.fallback}?autoplay=1`;
+            }
+        }
+
+        window.onload = function() {
+            const defaultBtn = document.querySelector('.btn.active');
+            loadAirportLive('RCTP', defaultBtn);
+        };
+    </script>
+
+</body>
+</html>
